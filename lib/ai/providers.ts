@@ -1,4 +1,5 @@
 import { gateway } from "@ai-sdk/gateway";
+import { azure } from "@ai-sdk/azure";
 import {
   customProvider,
   extractReasoningMiddleware,
@@ -27,36 +28,53 @@ export const myProvider = isTestEnvironment
     })()
   : null;
 
-export function getLanguageModel(modelId: string) {
+function mapToAzureDeployment(modelId: string) {
+  const base = modelId.replace(THINKING_SUFFIX_REGEX, "");
+
+  switch (base) {
+    case "chat-model":
+      return "gpt-4o-mini"; 
+    case "chat-model-reasoning":
+      return "YOUR_AZURE_CHAT_DEPLOYMENT"; //TODO
+    default:
+      return "gpt-4o-mini"; 
+  }
+}
+
+export function getLanguageModel(modelId: string = "chat-model") {
   if (isTestEnvironment && myProvider) {
     return myProvider.languageModel(modelId);
   }
 
-  const isReasoningModel =
-    modelId.includes("reasoning") || modelId.endsWith("-thinking");
+  // const isReasoningModel =
+  //   modelId.includes("reasoning") || modelId.endsWith("-thinking");
 
-  if (isReasoningModel) {
-    const gatewayModelId = modelId.replace(THINKING_SUFFIX_REGEX, "");
+  // if (isReasoningModel) {
+  //   const gatewayModelId = modelId.replace(THINKING_SUFFIX_REGEX, "");
 
-    return wrapLanguageModel({
-      model: gateway.languageModel(gatewayModelId),
-      middleware: extractReasoningMiddleware({ tagName: "thinking" }),
-    });
-  }
+  //   return wrapLanguageModel({
+  //     model: gateway.languageModel(gatewayModelId),
+  //     middleware: extractReasoningMiddleware({ tagName: "thinking" }),
+  //   });
+  // }
 
-  return gateway.languageModel(modelId);
+  const deployment = mapToAzureDeployment(modelId); 
+  const chatModel = azure(deployment)
+  return chatModel;
 }
 
 export function getTitleModel() {
-  if (isTestEnvironment && myProvider) {
-    return myProvider.languageModel("title-model");
-  }
-  return gateway.languageModel("google/gemini-2.5-flash-lite");
+  // if (isTestEnvironment && myProvider) {
+  //   return myProvider.languageModel("title-model");
+  // }
+  // return gateway.languageModel("google/gemini-2.5-flash-lite");
+  return getLanguageModel("chat-model");
 }
 
 export function getArtifactModel() {
-  if (isTestEnvironment && myProvider) {
-    return myProvider.languageModel("artifact-model");
-  }
-  return gateway.languageModel("anthropic/claude-haiku-4.5");
+  // if (isTestEnvironment && myProvider) {
+  //   return myProvider.languageModel("artifact-model");
+  // }
+  // return gateway.languageModel("anthropic/claude-haiku-4.5");
+  return getLanguageModel("chat-model");
 }

@@ -70,10 +70,10 @@ export const systemPrompt = ({
     selectedChatModel.includes("reasoning") ||
     selectedChatModel.includes("thinking")
   ) {
-    return `${regularPrompt}\n\n${requestPrompt}`;
+    return `${regularPrompt}\n\n${requestPrompt}\n\n${plmErpPrompt}`;
   }
 
-  return `${regularPrompt}\n\n${requestPrompt}\n\n${artifactsPrompt}`;
+  return `${regularPrompt}\n\n${requestPrompt}\n\n${artifactsPrompt}\n\n${plmErpPrompt}`;
 };
 
 export const codePrompt = `
@@ -137,3 +137,25 @@ Bad outputs (never do this):
 - "# Space Essay" (no hashtags)
 - "Title: Weather" (no prefixes)
 - ""NYC Weather"" (no quotes)`;
+
+
+export const plmErpPrompt = `
+You are an engineering copilot connected to PLM and ERP systems.
+
+Tool usage rules:
+- When the user asks about:
+  - part cost
+  - manufacturing cost
+  - optimized cost
+  - material selection
+  - ERP or PLM data
+  - cheapest / best material
+  - production cost
+
+You MUST call the tool named "optimizePartCost".
+
+Guidelines:
+- Never invent cost numbers or materials yourself.
+- Always rely on the tool output for pricing and materials.
+- After receiving the tool result, explain it clearly in engineering/business terms.
+`;

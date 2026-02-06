@@ -20,6 +20,10 @@ import { updateDocument } from "@/lib/ai/tools/update-document";
 import { isProductionEnvironment } from "@/lib/constants";
 import { optimizePartCost } from "@/lib/ai/tools/optimize-part"; //testing
 
+import { trace } from "@opentelemetry/api";
+import { langfuseSpanProcessor, flushLangfuse } from "@/instrumentation";
+
+
 import {
   createStreamId,
   deleteChatById,
@@ -77,7 +81,7 @@ export async function POST(request: Request) {
       differenceInHours: 24,
     });
 
-    if (messageCount > entitlementsByUserType[userType].maxMessagesPerDay) {
+    if (messageCount > (entitlementsByUserType[userType] as any).maxMessagesPerDay) {
       return new ChatSDKError("rate_limit:chat").toResponse();
     }
 
@@ -170,8 +174,15 @@ export async function POST(request: Request) {
             optimizePartCost: optimizePartCost(),
           },
           experimental_telemetry: {
-            isEnabled: isProductionEnvironment,
+            isEnabled: true,
             functionId: "stream-text",
+          },
+          // End the active span when the stream finishes/errors (safer for streaming)
+          onFinish: async () => {
+            trace.getActiveSpan()?.end();
+          },
+          onError: async () => {
+            trace.getActiveSpan()?.end();
           },
         });
 
@@ -222,6 +233,14 @@ export async function POST(request: Request) {
         }
       },
       onError: () => "Oops, an error occurred!",
+    });
+    
+    after(async () => {
+      // Either call the helper:
+      await flushLangfuse();
+
+      // Or call the processor directly:
+      // await langfuseSpanProcessor?.forceFlush();
     });
 
     return createUIMessageStreamResponse({

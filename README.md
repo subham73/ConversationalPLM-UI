@@ -65,7 +65,16 @@ You will need to use the environment variables [defined in `.env.example`](.env.
 ```bash
 pnpm install
 pnpm db:migrate # Setup database or apply latest database changes
-pnpm dev
+pnpm dev 
 ```
 
 Your app template should now be running on [localhost:3000](http://localhost:3000).
+
+####################
+<!-- conv ui -->
+pnpm dev --port 3001 //
+
+<!-- langfuse  -->
+open wsl 
+cd langfuse
+podman-compose up

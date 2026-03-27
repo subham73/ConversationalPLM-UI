@@ -1,3 +1,4 @@
+import { trace } from "@opentelemetry/api";
 import { geolocation } from "@vercel/functions";
 import {
   convertToModelMessages,
@@ -10,19 +11,15 @@ import {
 import { after } from "next/server";
 import { createResumableStreamContext } from "resumable-stream";
 import { auth, type UserType } from "@/app/(auth)/auth";
+import { flushLangfuse } from "@/instrumentation";
 import { entitlementsByUserType } from "@/lib/ai/entitlements";
 import { type RequestHints, systemPrompt } from "@/lib/ai/prompts";
 import { getLanguageModel } from "@/lib/ai/providers";
 import { createDocument } from "@/lib/ai/tools/create-document";
 import { getWeather } from "@/lib/ai/tools/get-weather";
+import { queryPLMAgent } from "@/lib/ai/tools/query-plm"; //testing
 import { requestSuggestions } from "@/lib/ai/tools/request-suggestions";
 import { updateDocument } from "@/lib/ai/tools/update-document";
-import { isProductionEnvironment } from "@/lib/constants";
-import { optimizePartCost } from "@/lib/ai/tools/optimize-part"; //testing
-
-import { trace } from "@opentelemetry/api";
-import { langfuseSpanProcessor, flushLangfuse } from "@/instrumentation";
-
 
 import {
   createStreamId,
@@ -81,7 +78,9 @@ export async function POST(request: Request) {
       differenceInHours: 24,
     });
 
-    if (messageCount > (entitlementsByUserType[userType] as any).maxMessagesPerDay) {
+    if (
+      messageCount > (entitlementsByUserType[userType] as any).maxMessagesPerDay
+    ) {
       return new ChatSDKError("rate_limit:chat").toResponse();
     }
 
@@ -157,7 +156,7 @@ export async function POST(request: Request) {
                 "createDocument",
                 "updateDocument",
                 "requestSuggestions",
-                "optimizePartCost",
+                "queryPLMAgent",
               ],
           providerOptions: isReasoningModel
             ? {
@@ -171,7 +170,7 @@ export async function POST(request: Request) {
             createDocument: createDocument({ session, dataStream }),
             updateDocument: updateDocument({ session, dataStream }),
             requestSuggestions: requestSuggestions({ session, dataStream }),
-            optimizePartCost: optimizePartCost(),
+            queryPLMAgent,
           },
           experimental_telemetry: {
             isEnabled: true,
@@ -234,7 +233,7 @@ export async function POST(request: Request) {
       },
       onError: () => "Oops, an error occurred!",
     });
-    
+
     after(async () => {
       // Either call the helper:
       await flushLangfuse();

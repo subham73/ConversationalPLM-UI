@@ -148,6 +148,7 @@ export async function POST(request: Request) {
           model: getLanguageModel(selectedChatModel),
           system: systemPrompt({ selectedChatModel, requestHints }),
           messages: modelMessages,
+          headers: { "x-thread-id": id },                                       // 🆕
           stopWhen: stepCountIs(5),
           experimental_activeTools: isReasoningModel
             ? []

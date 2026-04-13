@@ -22,6 +22,7 @@ import { MessageEditor } from "./message-editor";
 import { MessageReasoning } from "./message-reasoning";
 import { PreviewAttachment } from "./preview-attachment";
 import { Weather } from "./weather";
+import { ApprovalCard } from "./approval-card";
 
 const PurePreviewMessage = ({
   addToolApprovalResponse,
@@ -123,6 +124,31 @@ const PurePreviewMessage = ({
             }
 
             if (type === "text") {
+              const text = part.text ?? "";
+
+              // 🆕 Check if this text contains an approval request
+              const approvalMatch = text.match(
+                /<APPROVAL_REQUIRED>([\s\S]*?)<\/APPROVAL_REQUIRED>/
+              );
+
+              if (approvalMatch) {
+                try {
+                  const approvalData = JSON.parse(approvalMatch[1]);
+                  return (
+                    <ApprovalCard
+                      key={key}
+                      threadId={approvalData.threadId}
+                      question={approvalData.question}
+                      actions={approvalData.actions}
+                      setMessages={setMessages}
+                    />
+                  );
+                } catch {
+                  // If parsing fails, render as normal text
+                }
+              }
+
+              // Normal text rendering (unchanged)
               if (mode === "view") {
                 return (
                   <div key={key}>

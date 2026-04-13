@@ -8,6 +8,14 @@ export type ChatModel = {
   description: string;
 };
 
+export const titleModel = {
+  id: "mistral/mistral-small",
+  name: "Mistral Small",
+  provider: "mistral",
+  description: "Fast model for title generation",
+  gatewayOrder: ["mistral"],
+};
+
 export const chatModels: ChatModel[] = [
   // Anthropic
   {

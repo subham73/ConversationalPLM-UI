@@ -10,10 +10,10 @@ export let langfuseSpanProcessor: LangfuseSpanProcessor | undefined;
 export async function register() {
   // Next.js calls register() per runtime; only initialize OTEL on Node
   if (process.env.NEXT_RUNTIME !== "nodejs") {
-    console.log("[OTEL] Skip (not node runtime):", process.env.NEXT_RUNTIME);
+    // console.log("[OTEL] Skip (not node runtime):", process.env.NEXT_RUNTIME);
     return;
   }
-  console.log("[OTEL] register() starting…");
+  // console.log("[OTEL] register() starting…");
 
   langfuseSpanProcessor = new LangfuseSpanProcessor();
 
@@ -21,20 +21,20 @@ export async function register() {
     spanProcessors: [
       langfuseSpanProcessor,
       // TEMP: console exporter for verification (remove after you confirm)
-      new SimpleSpanProcessor(new ConsoleSpanExporter()),
+      // new SimpleSpanProcessor(new ConsoleSpanExporter()),
     ],
     // optional: add a Resource to set service.name, env, etc.
   });
 
   await sdk.start();
-  console.log("[OTEL] started OK");
+  // console.log("[OTEL] started OK");
 }
 
 // Optional helper if you prefer a function instead of importing the processor directly
 export async function flushLangfuse() {
   try {
     await langfuseSpanProcessor?.forceFlush();
-    console.log("[OTEL] Langfuse forceFlush() done");
+    // console.log("[OTEL] Langfuse forceFlush() done");
   } catch (e) {
     console.error("[OTEL] forceFlush() failed", e);
   }

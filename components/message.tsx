@@ -26,6 +26,7 @@ import { ApprovalCard } from "./approval-card";
 
 const PurePreviewMessage = ({
   addToolApprovalResponse,
+  allMessages,
   chatId,
   message,
   vote,
@@ -36,6 +37,7 @@ const PurePreviewMessage = ({
   requiresScrollPadding: _requiresScrollPadding,
 }: {
   addToolApprovalResponse: UseChatHelpers<ChatMessage>["addToolApprovalResponse"];
+  allMessages: ChatMessage[];
   chatId: string;
   message: ChatMessage;
   vote: Vote | undefined;
@@ -137,9 +139,11 @@ const PurePreviewMessage = ({
                   return (
                     <ApprovalCard
                       key={key}
+                      chatId={chatId}
                       threadId={approvalData.threadId}
                       question={approvalData.question}
                       actions={approvalData.actions}
+                      messages={allMessages}
                       setMessages={setMessages}
                     />
                   );
@@ -147,7 +151,7 @@ const PurePreviewMessage = ({
                   // If parsing fails, render as normal text
                 }
               }
-
+              
               // Normal text rendering (unchanged)
               if (mode === "view") {
                 return (

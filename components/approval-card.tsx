@@ -5,16 +5,20 @@
 import { useState } from "react";
 
 interface ApprovalCardProps {
+  chatId: string;
   threadId: string;
   question: string;
   actions: Array<{ tool: string; args: Record<string, unknown> }>;
+  messages: any[];
   setMessages: (fn: (msgs: any[]) => any[]) => void;
 }
 
 export function ApprovalCard({
+  chatId,
   threadId,
   question,
   actions,
+  messages,
   setMessages,
 }: ApprovalCardProps) {
   const [status, setStatus] = useState<
@@ -24,48 +28,57 @@ export function ApprovalCard({
 
   const handleDecision = async (decision: "approve" | "reject") => {
     setStatus("loading");
-
     try {
-      const res = await fetch("/api/chat/resume", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          threadId,
-          decision,
-          reason:
-            decision === "reject"
-              ? "User rejected this action"
-              : undefined,
-        }),
-      });
+    const res = await fetch("/api/chat/resume", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chatId,
+        threadId,
+        decision,
+        reason:
+          decision === "reject"
+            ? "User rejected this action"
+            : undefined,
+        existingMessages: messages,
+      }),
+    });
 
-      const reader = res.body!.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-      let fullText = "";
+    console.log("📡 Resume response status:", res.status);  // 🆕
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
+    const reader = res.body!.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let fullText = "";
 
-        buffer += decoder.decode(value, { stream: true });
-        const chunks = buffer.split("\n\n");
-        buffer = chunks.pop() ?? "";
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
 
-        for (const line of chunks) {
-          if (!line.startsWith("data: ")) continue;
-          const raw = line.slice(6).trim();
-          if (raw === "[DONE]") break;
+      const decoded = decoder.decode(value, { stream: true });
+      console.log("📦 Raw chunk:", decoded);  // 🆕
 
-          try {
-            const obj = JSON.parse(raw);
-            if (obj.type === "text-delta") {
-              fullText += obj.delta;
-              setResponseText(fullText); // 🆕 Live update
-            }
-          } catch {}
-        }
+      buffer += decoded;
+      const chunks = buffer.split("\n\n");
+      buffer = chunks.pop() ?? "";
+
+      for (const line of chunks) {
+        if (!line.startsWith("data: ")) continue;
+        const raw = line.slice(6).trim();
+        if (raw === "[DONE]") break;
+
+        try {
+          const obj = JSON.parse(raw);
+          console.log("📨 Parsed SSE event:", obj);  // 🆕
+
+          if (obj.type === "text-delta") {
+            const delta = obj.delta ?? obj.textDelta ?? "";
+            fullText += delta;
+            setResponseText(fullText);
+          }
+        } catch {}
       }
+    }
 
       setStatus(decision === "approve" ? "approved" : "rejected");
 

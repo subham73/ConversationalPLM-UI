@@ -22,7 +22,7 @@ import { useAutoResume } from "@/hooks/use-auto-resume";
 import { useChatVisibility } from "@/hooks/use-chat-visibility";
 import type { Vote } from "@/lib/db/schema";
 import { ChatSDKError } from "@/lib/errors";
-import type { Attachment, ChatMessage } from "@/lib/types";
+import type { Attachment, ChatMessage, CustomUIDataTypes } from "@/lib/types";
 import { fetcher, fetchWithErrorHandlers, generateUUID } from "@/lib/utils";
 import { Artifact } from "./artifact";
 import { useDataStream } from "./data-stream-provider";
@@ -31,6 +31,22 @@ import { MultimodalInput } from "./multimodal-input";
 import { getChatHistoryPaginationKey } from "./sidebar-history";
 import { toast } from "./toast";
 import type { VisibilityType } from "./visibility-selector";
+
+export type PendingLangGraphApproval =
+  CustomUIDataTypes["approval-required"];
+
+function getPendingApprovalFromMessages(messages: ChatMessage[]) {
+  const lastMessage = messages.at(-1);
+  if (lastMessage?.role !== "assistant") {
+    return null;
+  }
+
+  const approvalPart = lastMessage.parts.find(
+    (part) => part.type === "data-approval-required"
+  ) as { data?: PendingLangGraphApproval } | undefined;
+
+  return approvalPart?.data ?? null;
+}
 
 export function Chat({
   id,
@@ -71,6 +87,10 @@ export function Chat({
   const [input, setInput] = useState<string>("");
   const [showCreditCardAlert, setShowCreditCardAlert] = useState(false);
   const [currentModelId, setCurrentModelId] = useState(initialChatModel);
+  const [pendingApproval, setPendingApproval] =
+    useState<PendingLangGraphApproval | null>(() =>
+      getPendingApprovalFromMessages(initialMessages)
+    );
   const currentModelIdRef = useRef(currentModelId);
 
   useEffect(() => {
@@ -107,6 +127,30 @@ export function Chat({
       fetch: fetchWithErrorHandlers,
       prepareSendMessagesRequest(request) {
         const lastMessage = request.messages.at(-1);
+        const requestBody = request.body as
+          | {
+              langGraphApproval?: {
+                approval_id: string;
+                approved: boolean;
+                comment?: string;
+              };
+              langGraphThreadId?: string;
+            }
+          | undefined;
+
+        if (requestBody?.langGraphApproval) {
+          return {
+            body: {
+              id: request.id,
+              message: lastMessage,
+              langGraphApproval: requestBody.langGraphApproval,
+              langGraphThreadId: requestBody.langGraphThreadId,
+              selectedChatModel: currentModelIdRef.current,
+              selectedVisibilityType: visibilityType,
+            },
+          };
+        }
+
         const isToolApprovalContinuation =
           lastMessage?.role !== "user" ||
           request.messages.some((msg) =>
@@ -132,6 +176,9 @@ export function Chat({
       },
     }),
     onData: (dataPart) => {
+      if (dataPart.type === "data-approval-required") {
+        setPendingApproval(dataPart.data);
+      }
       setDataStream((ds) => (ds ? [...ds, dataPart] : []));
     },
     onFinish: () => {
@@ -185,6 +232,57 @@ export function Chat({
     setMessages,
   });
 
+  const respondToLangGraphApproval = (approved: boolean) => {
+    if (!pendingApproval) {
+      return;
+    }
+
+    const approval = pendingApproval;
+    setPendingApproval(null);
+    setMessages((currentMessages) =>
+      currentMessages.map((message) => ({
+        ...message,
+        parts: message.parts.map((part) => {
+          if (
+            part.type === "data-approval-required" &&
+            part.data.approvalId === approval.approvalId
+          ) {
+            return {
+              ...part,
+              data: {
+                ...part.data,
+                status: approved ? "approved" : "rejected",
+              },
+            };
+          }
+          return part;
+        }),
+      }))
+    );
+
+    sendMessage(
+      {
+        role: "user" as const,
+        parts: [
+          {
+            type: "text",
+            text: `${approved ? "Approved" : "Rejected"}: ${approval.title}`,
+          },
+        ],
+      },
+      {
+        body: {
+          langGraphApproval: {
+            approval_id: approval.approvalId,
+            approved,
+            comment: approved ? "Approved in chat UI" : "Rejected in chat UI",
+          },
+          langGraphThreadId: approval.threadId,
+        },
+      }
+    );
+  };
+
   return (
     <>
       <div className="overscroll-behavior-contain flex h-dvh min-w-0 touch-pan-y flex-col bg-background">
@@ -200,7 +298,9 @@ export function Chat({
           isArtifactVisible={isArtifactVisible}
           isReadonly={isReadonly}
           messages={messages}
+          pendingLangGraphApproval={pendingApproval}
           regenerate={regenerate}
+          respondToLangGraphApproval={respondToLangGraphApproval}
           selectedModelId={initialChatModel}
           setMessages={setMessages}
           status={status}

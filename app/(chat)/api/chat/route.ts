@@ -48,6 +48,216 @@ function getStreamContext() {
 
 export { getStreamContext };
 
+function getTextFromMessage(message: ChatMessage | undefined) {
+  return (
+    message?.parts
+      ?.filter((part) => part.type === "text")
+      .map((part) => part.text)
+      .join("\n")
+      .trim() ?? ""
+  );
+}
+
+async function createLangGraphBrainResponse({
+  chatId,
+  message,
+  approval,
+  langGraphThreadId,
+}: {
+  chatId: string;
+  message?: ChatMessage;
+  approval?: {
+    approval_id: string;
+    approved: boolean;
+    comment?: string;
+  };
+  langGraphThreadId?: string;
+}) {
+  const brainUrl = process.env.LANGGRAPH_BRAIN_URL ?? "http://localhost:8000";
+  const graphThreadId =
+    langGraphThreadId ?? `${chatId}:${message?.id ?? generateUUID()}`;
+
+  if (approval) {
+    const dbMessages = await getMessagesByChatId({ id: chatId });
+    const approvalMessage = [...dbMessages].reverse().find((dbMessage) =>
+      (dbMessage.parts as Array<{ type?: string; data?: { approvalId?: string } }>).some(
+        (part) =>
+          part.type === "data-approval-required" &&
+          part.data?.approvalId === approval.approval_id
+      )
+    );
+
+    if (approvalMessage) {
+      await updateMessage({
+        id: approvalMessage.id,
+        parts: (
+          approvalMessage.parts as Array<{
+            type?: string;
+            data?: Record<string, unknown>;
+          }>
+        ).map((part) =>
+          part.type === "data-approval-required"
+            ? {
+                ...part,
+                data: {
+                  ...part.data,
+                  status: approval.approved ? "approved" : "rejected",
+                },
+              }
+            : part
+        ),
+      });
+    }
+  }
+
+  const upstream = await fetch(`${brainUrl.replace(/\/$/, "")}/chat/stream`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      thread_id: graphThreadId,
+      message: approval ? undefined : getTextFromMessage(message),
+      approval,
+    }),
+  });
+
+  if (!upstream.ok || !upstream.body) {
+    return new ChatSDKError("offline:chat").toResponse();
+  }
+
+  const upstreamBody = upstream.body;
+  const decoder = new TextDecoder();
+  const encoder = new TextEncoder();
+  let pending = "";
+  let assistantMessageId = generateUUID();
+  let assistantText = "";
+  let approvalMessageId = generateUUID();
+  let approvalPart:
+    | {
+        type: "data-approval-required";
+        data: unknown;
+      }
+    | null = null;
+
+  const handlePart = (part: Record<string, any>) => {
+    if (part.type === "text-delta" && typeof part.delta === "string") {
+      assistantText += part.delta;
+    }
+    if (part.type === "data-approval-required") {
+      approvalPart = {
+        type: "data-approval-required",
+        data: {
+          ...part.data,
+          threadId: graphThreadId,
+          status: "pending",
+        },
+      };
+      return approvalPart;
+    }
+    return part;
+  };
+
+  const transformSseChunk = (chunk: string) => {
+    pending += chunk;
+    const events = pending.split("\n\n");
+    pending = events.pop() ?? "";
+    const output: string[] = [];
+
+    for (const event of events) {
+      const lines = event.split("\n");
+      for (const line of lines) {
+        if (!line.startsWith("data: ")) {
+          continue;
+        }
+        const payload = line.slice(6);
+        if (payload === "[DONE]") {
+          output.push("data: [DONE]\n\n");
+          continue;
+        }
+        try {
+          const part = JSON.parse(payload);
+          output.push(`data: ${JSON.stringify(handlePart(part))}\n\n`);
+        } catch (_) {
+          output.push(`${line}\n\n`);
+        }
+      }
+    }
+
+    return output.join("");
+  };
+
+  const stream = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      const reader = upstreamBody.getReader();
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) {
+            break;
+          }
+          const transformed = transformSseChunk(
+            decoder.decode(value, { stream: true })
+          );
+          if (transformed) {
+            controller.enqueue(encoder.encode(transformed));
+          }
+        }
+
+        const tail = decoder.decode();
+        if (tail) {
+          const transformed = transformSseChunk(tail);
+          if (transformed) {
+            controller.enqueue(encoder.encode(transformed));
+          }
+        }
+
+        if (assistantText.trim()) {
+          await saveMessages({
+            messages: [
+              {
+                id: assistantMessageId,
+                role: "assistant",
+                parts: [{ type: "text", text: assistantText }],
+                createdAt: new Date(),
+                attachments: [],
+                chatId,
+              },
+            ],
+          });
+        }
+
+        if (approvalPart) {
+          await saveMessages({
+            messages: [
+              {
+                id: approvalMessageId,
+                role: "assistant",
+                parts: [approvalPart],
+                createdAt: new Date(),
+                attachments: [],
+                chatId,
+              },
+            ],
+          });
+          approvalMessageId = generateUUID();
+          approvalPart = null;
+        }
+      } finally {
+        controller.close();
+        reader.releaseLock();
+      }
+    },
+  });
+
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      Connection: "keep-alive",
+      "X-Vercel-AI-UI-Message-Stream": "v1",
+    },
+  });
+}
+
 export async function POST(request: Request) {
   let requestBody: PostRequestBody;
 
@@ -127,6 +337,22 @@ export async function POST(request: Request) {
             createdAt: new Date(),
           },
         ],
+      });
+    }
+
+    if (selectedChatModel === "langgraph-brain") {
+      if (titlePromise) {
+        void titlePromise.then((title) =>
+          updateChatTitleById({ chatId: id, title })
+        ).catch(() => {
+          // Title updates are non-critical for the LangGraph proxy path.
+        });
+      }
+      return createLangGraphBrainResponse({
+        chatId: id,
+        message: message as ChatMessage | undefined,
+        approval: requestBody.langGraphApproval,
+        langGraphThreadId: requestBody.langGraphThreadId,
       });
     }
 

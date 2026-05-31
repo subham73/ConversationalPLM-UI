@@ -2,10 +2,19 @@ import type { UseChatHelpers } from "@ai-sdk/react";
 import { ArrowDownIcon } from "lucide-react";
 import { useMessages } from "@/hooks/use-messages";
 import type { Vote } from "@/lib/db/schema";
-import type { ChatMessage } from "@/lib/types";
+import type { ChatMessage, CustomUIDataTypes } from "@/lib/types";
+import { Button } from "./ui/button";
 import { useDataStream } from "./data-stream-provider";
 import { Greeting } from "./greeting";
 import { PreviewMessage, ThinkingMessage } from "./message";
+import {
+  Tool,
+  ToolContent,
+  ToolHeader,
+  ToolInput,
+} from "./elements/tool";
+
+type PendingLangGraphApproval = CustomUIDataTypes["approval-required"];
 
 type MessagesProps = {
   addToolApprovalResponse: UseChatHelpers<ChatMessage>["addToolApprovalResponse"];
@@ -18,6 +27,8 @@ type MessagesProps = {
   isReadonly: boolean;
   isArtifactVisible: boolean;
   selectedModelId: string;
+  pendingLangGraphApproval: PendingLangGraphApproval | null;
+  respondToLangGraphApproval: (approved: boolean) => void;
 };
 
 function PureMessages({
@@ -30,6 +41,8 @@ function PureMessages({
   regenerate,
   isReadonly,
   selectedModelId: _selectedModelId,
+  pendingLangGraphApproval,
+  respondToLangGraphApproval,
 }: MessagesProps) {
   const {
     containerRef: messagesContainerRef,
@@ -82,6 +95,15 @@ function PureMessages({
               )
             ) && <ThinkingMessage />}
 
+          {pendingLangGraphApproval && (
+            <LangGraphApprovalCard
+              approval={pendingLangGraphApproval}
+              disabled={status === "submitted" || status === "streaming"}
+              isReadonly={isReadonly}
+              onRespond={respondToLangGraphApproval}
+            />
+          )}
+
           <div
             className="min-h-[24px] min-w-[24px] shrink-0"
             ref={messagesEndRef}
@@ -106,3 +128,63 @@ function PureMessages({
 }
 
 export const Messages = PureMessages;
+
+function LangGraphApprovalCard({
+  approval,
+  disabled,
+  isReadonly,
+  onRespond,
+}: {
+  approval: PendingLangGraphApproval;
+  disabled: boolean;
+  isReadonly: boolean;
+  onRespond: (approved: boolean) => void;
+}) {
+  return (
+    <div
+      className="group/message fade-in w-full animate-in duration-200"
+      data-role="assistant"
+    >
+      <div className="flex w-full items-start justify-start gap-2 md:gap-3">
+        <div className="w-full max-w-[min(100%,520px)]">
+          <Tool className="w-full" defaultOpen={true}>
+            <ToolHeader
+              state="approval-requested"
+              type="tool-langGraphApproval"
+            />
+            <ToolContent>
+              <div className="space-y-2 px-4 py-3">
+                <div className="font-medium text-sm">{approval.title}</div>
+                <div className="text-muted-foreground text-sm">
+                  {approval.description}
+                </div>
+              </div>
+              <ToolInput input={approval.action} />
+              {!isReadonly && (
+                <div className="flex items-center justify-end gap-2 border-t px-4 py-3">
+                  <Button
+                    disabled={disabled}
+                    onClick={() => onRespond(false)}
+                    size="sm"
+                    type="button"
+                    variant="ghost"
+                  >
+                    Reject
+                  </Button>
+                  <Button
+                    disabled={disabled}
+                    onClick={() => onRespond(true)}
+                    size="sm"
+                    type="button"
+                  >
+                    Approve
+                  </Button>
+                </div>
+              )}
+            </ToolContent>
+          </Tool>
+        </div>
+      </div>
+    </div>
+  );
+}

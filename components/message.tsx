@@ -2,7 +2,7 @@
 import type { UseChatHelpers } from "@ai-sdk/react";
 import { useState } from "react";
 import type { Vote } from "@/lib/db/schema";
-import type { ChatMessage } from "@/lib/types";
+import type { ChatMessage, CustomUIDataTypes } from "@/lib/types";
 import { cn, sanitizeText } from "@/lib/utils";
 import { useDataStream } from "./data-stream-provider";
 import { DocumentToolResult } from "./document";
@@ -81,6 +81,7 @@ const PurePreviewMessage = ({
                   (p) => p.type === "text" && p.text?.trim()
                 ) ||
                   message.parts?.some((p) => p.type.startsWith("tool-")))) ||
+              message.parts?.some((p) => p.type === "data-approval-required") ||
               mode === "edit",
             "max-w-[calc(100%-2.5rem)] sm:max-w-[min(fit-content,80%)]":
               message.role === "user" && mode !== "edit",
@@ -107,6 +108,29 @@ const PurePreviewMessage = ({
           {message.parts?.map((part, index) => {
             const { type } = part;
             const key = `message-${message.id}-part-${index}`;
+
+            if (type === "data-approval-required") {
+              const approval = (part as {
+                data: CustomUIDataTypes["approval-required"];
+              }).data;
+              const status = approval.status ?? "pending";
+              const statusLabel =
+                status === "approved"
+                  ? "Approved"
+                  : status === "rejected"
+                    ? "Rejected"
+                    : "Approval requested";
+
+              return (
+                <div
+                  className="w-fit rounded-md border bg-muted/30 px-3 py-2 text-sm"
+                  key={key}
+                >
+                  <span className="font-medium">{statusLabel}:</span>{" "}
+                  {approval.title}
+                </div>
+              );
+            }
 
             if (type === "reasoning") {
               const hasContent = part.text?.trim().length > 0;

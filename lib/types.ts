@@ -30,6 +30,15 @@ export type ChatTools = {
 };
 
 export type CustomUIDataTypes = {
+  "approval-required": {
+    kind: "approval_required";
+    approvalId: string;
+    threadId?: string;
+    status?: "pending" | "approved" | "rejected";
+    title: string;
+    description: string;
+    action: Record<string, unknown>;
+  };
   textDelta: string;
   imageDelta: string;
   sheetDelta: string;

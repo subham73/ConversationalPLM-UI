@@ -9,6 +9,12 @@ export type ChatModel = {
 };
 
 export const chatModels: ChatModel[] = [
+  {
+    id: "langgraph-brain",
+    name: "LangGraph Brain",
+    provider: "langgraph",
+    description: "FastAPI agent with sequential interrupt approvals",
+  },
   // Anthropic
   {
     id: "anthropic/claude-haiku-4.5",

@@ -28,12 +28,12 @@ export const Tool = ({ className, ...props }: ToolProps) => (
 );
 
 export type ToolHeaderProps = {
-  type: ToolUIPart["type"];
-  state: ToolUIPart["state"];
+  type: ToolUIPart["type"] | (string & {});
+  state?: ToolUIPart["state"];
   className?: string;
 };
 
-const getStatusBadge = (status: ToolUIPart["state"]) => {
+const getStatusBadge = (status: ToolUIPart["state"] = "input-available") => {
   const labels: Record<ToolUIPart["state"], string> = {
     "input-streaming": "Pending",
     "input-available": "Running",

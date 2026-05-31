@@ -474,13 +474,17 @@ function PureModelSelectorCompact({
     chatModels.find((m) => m.id === selectedModelId) ??
     chatModels.find((m) => m.id === DEFAULT_CHAT_MODEL) ??
     chatModels[0];
-  const [provider] = selectedModel.id.split("/");
+  const provider =
+    selectedModel.provider === "langgraph"
+      ? "vercel"
+      : selectedModel.id.split("/")[0];
 
   // Provider display names
   const providerNames: Record<string, string> = {
     anthropic: "Anthropic",
     openai: "OpenAI",
     google: "Google",
+    langgraph: "LangGraph",
     xai: "xAI",
     reasoning: "Reasoning",
   };
@@ -503,7 +507,10 @@ function PureModelSelectorCompact({
                 key={providerKey}
               >
                 {providerModels.map((model) => {
-                  const logoProvider = model.id.split("/")[0];
+                  const logoProvider =
+                    model.provider === "langgraph"
+                      ? "vercel"
+                      : model.id.split("/")[0];
                   return (
                     <ModelSelectorItem
                       key={model.id}

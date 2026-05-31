@@ -27,11 +27,19 @@ const messageSchema = z.object({
   parts: z.array(z.any()),
 });
 
+const langGraphApprovalSchema = z.object({
+  approval_id: z.string(),
+  approved: z.boolean(),
+  comment: z.string().optional(),
+});
+
 export const postRequestBodySchema = z.object({
   id: z.string().uuid(),
   // Either a single new message or all messages (for tool approvals)
   message: userMessageSchema.optional(),
   messages: z.array(messageSchema).optional(),
+  langGraphApproval: langGraphApprovalSchema.optional(),
+  langGraphThreadId: z.string().optional(),
   selectedChatModel: z.string(),
   selectedVisibilityType: z.enum(["public", "private"]),
 });

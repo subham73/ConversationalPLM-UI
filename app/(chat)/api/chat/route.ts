@@ -64,6 +64,7 @@ async function createLangGraphBrainResponse({
   message,
   approval,
   langGraphThreadId,
+  userId,
 }: {
   chatId: string;
   message?: ChatMessage;
@@ -73,6 +74,7 @@ async function createLangGraphBrainResponse({
     comment?: string;
   };
   langGraphThreadId?: string;
+  userId: string;
 }) {
   const brainUrl = process.env.LANGGRAPH_BRAIN_URL ?? "http://localhost:8000";
   const graphThreadId =
@@ -118,6 +120,7 @@ async function createLangGraphBrainResponse({
       thread_id: graphThreadId,
       message: approval ? undefined : getTextFromMessage(message),
       approval,
+      user_id: userId,
     }),
   });
 
@@ -373,6 +376,7 @@ export async function POST(request: Request) {
         message: message as ChatMessage | undefined,
         approval: requestBody.langGraphApproval,
         langGraphThreadId: requestBody.langGraphThreadId,
+        userId: session.user.id,
       });
     }
 

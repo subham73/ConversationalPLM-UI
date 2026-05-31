@@ -23,6 +23,8 @@ import {
   chat,
   type DBMessage,
   document,
+  type IntegrationConfig,
+  integrationConfig,
   message,
   messageSource,
   type Suggestion,
@@ -51,7 +53,11 @@ function isMissingMessageSourceTableError(error: unknown) {
   );
 }
 
-async function deleteMessageSourcesWhere(where: SQL<any>) {
+async function deleteMessageSourcesWhere(where: SQL<any> | undefined) {
+  if (!where) {
+    return;
+  }
+
   try {
     await db.delete(messageSource).where(where);
   } catch (error) {
@@ -269,6 +275,129 @@ export async function saveMessages({ messages }: { messages: DBMessage[] }) {
     return await db.insert(message).values(messages);
   } catch (_error) {
     throw new ChatSDKError("bad_request:database", "Failed to save messages");
+  }
+}
+
+export type IntegrationProvider = "3dx" | "jira" | "dummy";
+
+export type IntegrationStatus = {
+  provider: IntegrationProvider;
+  instanceUrl: string;
+  status: "connected" | "disconnected";
+  securityContext: string | null;
+  securityContexts: unknown;
+  lastTestedAt: Date | null;
+  updatedAt: Date;
+};
+
+export async function getIntegrationConfigsByUserId({
+  userId,
+}: {
+  userId: string;
+}): Promise<IntegrationStatus[]> {
+  try {
+    return await db
+      .select({
+        provider: integrationConfig.provider,
+        instanceUrl: integrationConfig.instanceUrl,
+        status: integrationConfig.status,
+        securityContext: integrationConfig.securityContext,
+        securityContexts: integrationConfig.securityContexts,
+        lastTestedAt: integrationConfig.lastTestedAt,
+        updatedAt: integrationConfig.updatedAt,
+      })
+      .from(integrationConfig)
+      .where(eq(integrationConfig.userId, userId));
+  } catch (_error) {
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to get integration configs"
+    );
+  }
+}
+
+export async function getIntegrationConfigByUserIdAndProvider({
+  userId,
+  provider,
+}: {
+  userId: string;
+  provider: IntegrationProvider;
+}): Promise<IntegrationConfig | null> {
+  try {
+    const [config] = await db
+      .select()
+      .from(integrationConfig)
+      .where(
+        and(
+          eq(integrationConfig.userId, userId),
+          eq(integrationConfig.provider, provider)
+        )
+      )
+      .limit(1);
+
+    return config ?? null;
+  } catch (_error) {
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to get integration config"
+    );
+  }
+}
+
+export async function upsertIntegrationConfig({
+  userId,
+  provider,
+  instanceUrl,
+  encryptedCredentials,
+  securityContext,
+  securityContexts,
+  status,
+  lastTestedAt,
+}: {
+  userId: string;
+  provider: IntegrationProvider;
+  instanceUrl: string;
+  encryptedCredentials?: string | null;
+  securityContext?: string | null;
+  securityContexts?: unknown;
+  status: "connected" | "disconnected";
+  lastTestedAt?: Date | null;
+}) {
+  const now = new Date();
+
+  try {
+    return await db
+      .insert(integrationConfig)
+      .values({
+        userId,
+        provider,
+        instanceUrl,
+        encryptedCredentials,
+        securityContext,
+        securityContexts: securityContexts ?? [],
+        status,
+        lastTestedAt: lastTestedAt ?? null,
+        updatedAt: now,
+        createdAt: now,
+      })
+      .onConflictDoUpdate({
+        target: [integrationConfig.userId, integrationConfig.provider],
+        set: {
+          instanceUrl,
+          encryptedCredentials,
+          securityContext,
+          securityContexts: securityContexts ?? [],
+          status,
+          lastTestedAt: lastTestedAt ?? null,
+          updatedAt: now,
+        },
+      })
+      .returning();
+  } catch (_error) {
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to save integration config"
+    );
   }
 }
 

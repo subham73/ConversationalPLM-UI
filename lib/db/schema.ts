@@ -7,6 +7,7 @@ import {
   primaryKey,
   text,
   timestamp,
+  unique,
   uuid,
   varchar,
 } from "drizzle-orm/pg-core";
@@ -81,6 +82,39 @@ export const messageSource = pgTable(
 );
 
 export type MessageSource = InferSelectModel<typeof messageSource>;
+
+export const integrationConfig = pgTable(
+  "IntegrationConfig",
+  {
+    id: uuid("id").primaryKey().notNull().defaultRandom(),
+    userId: uuid("userId")
+      .notNull()
+      .references(() => user.id),
+    provider: varchar("provider", {
+      enum: ["3dx", "jira", "dummy"],
+    }).notNull(),
+    instanceUrl: text("instanceUrl").notNull(),
+    encryptedCredentials: text("encryptedCredentials"),
+    securityContext: text("securityContext"),
+    securityContexts: json("securityContexts").notNull().default([]),
+    status: varchar("status", {
+      enum: ["connected", "disconnected"],
+    })
+      .notNull()
+      .default("disconnected"),
+    lastTestedAt: timestamp("lastTestedAt"),
+    updatedAt: timestamp("updatedAt").notNull(),
+    createdAt: timestamp("createdAt").notNull(),
+  },
+  (table) => ({
+    userProviderUnique: unique("IntegrationConfig_userId_provider_unique").on(
+      table.userId,
+      table.provider
+    ),
+  })
+);
+
+export type IntegrationConfig = InferSelectModel<typeof integrationConfig>;
 
 // DEPRECATED: The following schema is deprecated and will be removed in the future.
 // Read the migration guide at https://chat-sdk.dev/docs/migration-guides/message-parts

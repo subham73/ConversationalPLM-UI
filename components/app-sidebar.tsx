@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { useSWRConfig } from "swr";
 import { unstable_serialize } from "swr/infinite";
 import { PlusIcon, TrashIcon } from "@/components/icons";
+import { IntegrationsNav } from "@/components/integrations-nav";
 import {
   getChatHistoryPaginationKey,
   SidebarHistory,
@@ -119,7 +120,14 @@ export function AppSidebar({ user }: { user: User | undefined }) {
         <SidebarContent>
           <SidebarHistory user={user} />
         </SidebarContent>
-        <SidebarFooter>{user && <SidebarUserNav user={user} />}</SidebarFooter>
+        <SidebarFooter>
+          {user && (
+            <>
+              <IntegrationsNav />
+              <SidebarUserNav user={user} />
+            </>
+          )}
+        </SidebarFooter>
       </Sidebar>
 
       <AlertDialog

@@ -60,6 +60,28 @@ export const message = pgTable("Message_v2", {
 
 export type DBMessage = InferSelectModel<typeof message>;
 
+export const messageSource = pgTable(
+  "MessageSource",
+  {
+    id: uuid("id").notNull().defaultRandom(),
+    chatId: uuid("chatId")
+      .notNull()
+      .references(() => chat.id),
+    messageId: uuid("messageId")
+      .notNull()
+      .references(() => message.id),
+    sourceType: varchar("sourceType").notNull(),
+    title: text("title").notNull(),
+    payload: json("payload").notNull(),
+    createdAt: timestamp("createdAt").notNull(),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.id] }),
+  })
+);
+
+export type MessageSource = InferSelectModel<typeof messageSource>;
+
 // DEPRECATED: The following schema is deprecated and will be removed in the future.
 // Read the migration guide at https://chat-sdk.dev/docs/migration-guides/message-parts
 export const voteDeprecated = pgTable(

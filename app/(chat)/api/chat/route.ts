@@ -25,13 +25,14 @@ import {
   getMessageCountByUserId,
   getMessagesByChatId,
   saveChat,
+  saveMessageSources,
   saveMessages,
   updateChatTitleById,
   updateMessage,
 } from "@/lib/db/queries";
 import type { DBMessage } from "@/lib/db/schema";
 import { ChatSDKError } from "@/lib/errors";
-import type { ChatMessage } from "@/lib/types";
+import type { ChatMessage, MessageSourceData } from "@/lib/types";
 import { convertToUIMessages, generateUUID } from "@/lib/utils";
 import { generateTitleFromUserMessage } from "../../actions";
 import { type PostRequestBody, postRequestBodySchema } from "./schema";
@@ -130,6 +131,7 @@ async function createLangGraphBrainResponse({
   let pending = "";
   let assistantMessageId = generateUUID();
   let assistantText = "";
+  let assistantSources: MessageSourceData[] = [];
   let approvalMessageId = generateUUID();
   let approvalPart:
     | {
@@ -139,6 +141,9 @@ async function createLangGraphBrainResponse({
     | null = null;
 
   const handlePart = (part: Record<string, any>) => {
+    if (part.type === "start") {
+      return { ...part, messageId: assistantMessageId };
+    }
     if (part.type === "text-delta" && typeof part.delta === "string") {
       assistantText += part.delta;
     }
@@ -152,6 +157,11 @@ async function createLangGraphBrainResponse({
         },
       };
       return approvalPart;
+    }
+    if (part.type === "data-sources") {
+      assistantSources = Array.isArray(part.data?.sources)
+        ? part.data.sources
+        : [];
     }
     return part;
   };
@@ -222,6 +232,16 @@ async function createLangGraphBrainResponse({
                 chatId,
               },
             ],
+          });
+          await saveMessageSources({
+            sources: assistantSources.map((source) => ({
+              chatId,
+              messageId: assistantMessageId,
+              sourceType: source.type,
+              title: source.title,
+              payload: source,
+              createdAt: new Date(),
+            })),
           });
         }
 

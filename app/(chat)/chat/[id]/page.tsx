@@ -6,7 +6,11 @@ import { auth } from "@/app/(auth)/auth";
 import { Chat } from "@/components/chat";
 import { DataStreamHandler } from "@/components/data-stream-handler";
 import { DEFAULT_CHAT_MODEL } from "@/lib/ai/models";
-import { getChatById, getMessagesByChatId } from "@/lib/db/queries";
+import {
+  getChatById,
+  getMessagesByChatId,
+  getMessageSourceCountsByChatId,
+} from "@/lib/db/queries";
 import { convertToUIMessages } from "@/lib/utils";
 
 export default function Page(props: { params: Promise<{ id: string }> }) {
@@ -44,8 +48,9 @@ async function ChatPage({ params }: { params: Promise<{ id: string }> }) {
   const messagesFromDb = await getMessagesByChatId({
     id,
   });
+  const sourceCounts = await getMessageSourceCountsByChatId({ id });
 
-  const uiMessages = convertToUIMessages(messagesFromDb);
+  const uiMessages = convertToUIMessages(messagesFromDb, sourceCounts);
 
   const cookieStore = await cookies();
   const chatModelFromCookie = cookieStore.get("chat-model");

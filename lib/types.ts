@@ -11,6 +11,7 @@ export type DataPart = { type: "append-message"; message: string };
 
 export const messageMetadataSchema = z.object({
   createdAt: z.string(),
+  sourceCount: z.number().optional(),
 });
 
 export type MessageMetadata = z.infer<typeof messageMetadataSchema>;
@@ -39,6 +40,9 @@ export type CustomUIDataTypes = {
     description: string;
     action: Record<string, unknown>;
   };
+  sources: {
+    sources: MessageSourceData[];
+  };
   textDelta: string;
   imageDelta: string;
   sheetDelta: string;
@@ -51,6 +55,16 @@ export type CustomUIDataTypes = {
   clear: null;
   finish: null;
   "chat-title": string;
+};
+
+export type MessageSourceData = {
+  id: string;
+  type: string;
+  title: string;
+  toolName?: string;
+  toolCallId?: string;
+  input?: unknown;
+  output?: unknown;
 };
 
 export type ChatMessage = UIMessage<

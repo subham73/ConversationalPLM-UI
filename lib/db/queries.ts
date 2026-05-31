@@ -24,6 +24,7 @@ import {
   type DBMessage,
   document,
   message,
+  messageSource,
   type Suggestion,
   stream,
   suggestion,
@@ -40,6 +41,25 @@ import { generateHashedPassword } from "./utils";
 // biome-ignore lint: Forbidden non-null assertion.
 const client = postgres(process.env.POSTGRES_URL!);
 const db = drizzle(client);
+
+function isMissingMessageSourceTableError(error: unknown) {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    error.code === "42P01"
+  );
+}
+
+async function deleteMessageSourcesWhere(where: SQL<any>) {
+  try {
+    await db.delete(messageSource).where(where);
+  } catch (error) {
+    if (!isMissingMessageSourceTableError(error)) {
+      throw error;
+    }
+  }
+}
 
 export async function getUser(email: string): Promise<User[]> {
   try {
@@ -106,6 +126,7 @@ export async function saveChat({
 export async function deleteChatById({ id }: { id: string }) {
   try {
     await db.delete(vote).where(eq(vote.chatId, id));
+    await deleteMessageSourcesWhere(eq(messageSource.chatId, id));
     await db.delete(message).where(eq(message.chatId, id));
     await db.delete(stream).where(eq(stream.chatId, id));
 
@@ -136,6 +157,7 @@ export async function deleteAllChatsByUserId({ userId }: { userId: string }) {
     const chatIds = userChats.map((c) => c.id);
 
     await db.delete(vote).where(inArray(vote.chatId, chatIds));
+    await deleteMessageSourcesWhere(inArray(messageSource.chatId, chatIds));
     await db.delete(message).where(inArray(message.chatId, chatIds));
     await db.delete(stream).where(inArray(stream.chatId, chatIds));
 
@@ -247,6 +269,76 @@ export async function saveMessages({ messages }: { messages: DBMessage[] }) {
     return await db.insert(message).values(messages);
   } catch (_error) {
     throw new ChatSDKError("bad_request:database", "Failed to save messages");
+  }
+}
+
+export async function saveMessageSources({
+  sources,
+}: {
+  sources: (typeof messageSource.$inferInsert)[];
+}) {
+  if (sources.length === 0) {
+    return;
+  }
+
+  try {
+    return await db.insert(messageSource).values(sources);
+  } catch (error) {
+    if (isMissingMessageSourceTableError(error)) {
+      return;
+    }
+
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to save message sources"
+    );
+  }
+}
+
+export async function getMessageSourcesByMessageId({
+  messageId,
+}: {
+  messageId: string;
+}) {
+  try {
+    return await db
+      .select()
+      .from(messageSource)
+      .where(eq(messageSource.messageId, messageId))
+      .orderBy(asc(messageSource.createdAt));
+  } catch (error) {
+    if (isMissingMessageSourceTableError(error)) {
+      return [];
+    }
+
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to get message sources"
+    );
+  }
+}
+
+export async function getMessageSourceCountsByChatId({ id }: { id: string }) {
+  try {
+    const rows = await db
+      .select({
+        messageId: messageSource.messageId,
+        count: count(messageSource.id),
+      })
+      .from(messageSource)
+      .where(eq(messageSource.chatId, id))
+      .groupBy(messageSource.messageId);
+
+    return new Map(rows.map((row) => [row.messageId, Number(row.count)]));
+  } catch (error) {
+    if (isMissingMessageSourceTableError(error)) {
+      return new Map<string, number>();
+    }
+
+    throw new ChatSDKError(
+      "bad_request:database",
+      "Failed to get message source counts"
+    );
   }
 }
 
@@ -483,6 +575,12 @@ export async function deleteMessagesByChatIdAfterTimestamp({
         .where(
           and(eq(vote.chatId, chatId), inArray(vote.messageId, messageIds))
         );
+      await deleteMessageSourcesWhere(
+        and(
+          eq(messageSource.chatId, chatId),
+          inArray(messageSource.messageId, messageIds)
+        )
+      );
 
       return await db
         .delete(message)

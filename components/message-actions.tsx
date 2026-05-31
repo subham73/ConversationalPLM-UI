@@ -1,12 +1,31 @@
 import equal from "fast-deep-equal";
-import { memo } from "react";
+import { memo, useMemo, useState } from "react";
 import { toast } from "sonner";
+import useSWR from "swr";
 import { useSWRConfig } from "swr";
 import { useCopyToClipboard } from "usehooks-ts";
 import type { Vote } from "@/lib/db/schema";
-import type { ChatMessage } from "@/lib/types";
+import type { ChatMessage, MessageSourceData } from "@/lib/types";
+import { fetcher } from "@/lib/utils";
 import { Action, Actions } from "./elements/actions";
-import { CopyIcon, PencilEditIcon, ThumbDownIcon, ThumbUpIcon } from "./icons";
+import {
+  CopyIcon,
+  LogsIcon,
+  PencilEditIcon,
+  ThumbDownIcon,
+  ThumbUpIcon,
+} from "./icons";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "./ui/dialog";
+
+function formatSourcePayload(source: MessageSourceData) {
+  return JSON.stringify(source, null, 2);
+}
 
 export function PureMessageActions({
   chatId,
@@ -23,6 +42,39 @@ export function PureMessageActions({
 }) {
   const { mutate } = useSWRConfig();
   const [_, copyToClipboard] = useCopyToClipboard();
+  const [isSourcesOpen, setIsSourcesOpen] = useState(false);
+  const hasAssistantText =
+    message.role === "assistant" &&
+    message.parts.some((part) => part.type === "text" && part.text.trim());
+
+  const inlineSources = useMemo(() => {
+    if (!hasAssistantText) {
+      return [];
+    }
+
+    const sourcesPart = message.parts.find(
+      (part) => part.type === "data-sources"
+    ) as { data?: { sources?: MessageSourceData[] } } | undefined;
+
+    return Array.isArray(sourcesPart?.data?.sources)
+      ? sourcesPart.data.sources
+      : [];
+  }, [hasAssistantText, message.parts]);
+
+  const sourceCount = hasAssistantText
+    ? inlineSources.length || message.metadata?.sourceCount || 0
+    : 0;
+  const { data: persistedSources, isLoading: isLoadingSources } = useSWR<{
+    sources: MessageSourceData[];
+  }>(
+    isSourcesOpen && sourceCount > 0
+      ? `/api/message-sources?chatId=${chatId}&messageId=${message.id}`
+      : null,
+    fetcher
+  );
+  const sources = persistedSources?.sources?.length
+    ? persistedSources.sources
+    : inlineSources;
 
   if (isLoading) {
     return null;
@@ -72,6 +124,65 @@ export function PureMessageActions({
       <Action onClick={handleCopy} tooltip="Copy">
         <CopyIcon />
       </Action>
+
+      {sourceCount > 0 && (
+        <>
+          <Action
+            data-testid="message-sources"
+            onClick={() => setIsSourcesOpen(true)}
+            tooltip="View Sources"
+          >
+            <LogsIcon />
+          </Action>
+
+          <Dialog onOpenChange={setIsSourcesOpen} open={isSourcesOpen}>
+            <DialogContent className="max-h-[85vh] max-w-2xl grid-rows-[auto_minmax(0,1fr)]">
+              <DialogHeader>
+                <DialogTitle>Message Sources</DialogTitle>
+                <DialogDescription>
+                  Raw tool outputs and data points used for this response.
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="min-h-0 overflow-y-auto pr-1">
+                {isLoadingSources && sources.length === 0 ? (
+                  <div className="rounded-md border bg-muted/30 px-3 py-2 text-muted-foreground text-sm">
+                    Loading sources...
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {sources.map((source, index) => (
+                      <section
+                        className="rounded-md border bg-muted/20"
+                        key={source.id || `${message.id}-source-${index}`}
+                      >
+                        <div className="flex items-center justify-between gap-3 border-b px-3 py-2">
+                          <div className="min-w-0">
+                            <div className="truncate font-medium text-sm">
+                              {source.title || source.toolName || "Source"}
+                            </div>
+                            {source.toolCallId && (
+                              <div className="truncate text-muted-foreground text-xs">
+                                {source.toolCallId}
+                              </div>
+                            )}
+                          </div>
+                          <span className="shrink-0 rounded border px-2 py-0.5 text-muted-foreground text-xs">
+                            {source.type}
+                          </span>
+                        </div>
+                        <pre className="max-h-72 overflow-auto p-3 text-xs leading-relaxed">
+                          {formatSourcePayload(source)}
+                        </pre>
+                      </section>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </DialogContent>
+          </Dialog>
+        </>
+      )}
 
       <Action
         data-testid="message-upvote"
@@ -181,6 +292,12 @@ export const MessageActions = memo(
       return false;
     }
     if (prevProps.isLoading !== nextProps.isLoading) {
+      return false;
+    }
+    if (!equal(prevProps.message.parts, nextProps.message.parts)) {
+      return false;
+    }
+    if (!equal(prevProps.message.metadata, nextProps.message.metadata)) {
       return false;
     }
 

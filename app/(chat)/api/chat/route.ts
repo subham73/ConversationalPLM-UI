@@ -32,6 +32,11 @@ import {
 } from "@/lib/db/queries";
 import type { DBMessage } from "@/lib/db/schema";
 import { ChatSDKError } from "@/lib/errors";
+import {
+  getApprovalDisplayName,
+  getToolDisplayName,
+  getToolProvider,
+} from "@/lib/tool-display";
 import type { ChatMessage, MessageSourceData } from "@/lib/types";
 import { convertToUIMessages, generateUUID } from "@/lib/utils";
 import { generateTitleFromUserMessage } from "../../actions";
@@ -59,11 +64,46 @@ function getTextFromMessage(message: ChatMessage | undefined) {
   );
 }
 
+async function generateLangGraphTitleFromUserMessage({
+  brainUrl,
+  chatId,
+  message,
+}: {
+  brainUrl: string;
+  chatId: string;
+  message: ChatMessage;
+}) {
+  const response = await fetch(`${brainUrl.replace(/\/$/, "")}/api/chat-sync`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-session-id": chatId,
+    },
+    body: JSON.stringify({
+      thread_id: chatId,
+      messages: [message],
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error("LangGraph title endpoint unavailable");
+  }
+
+  const data = (await response.json()) as { text?: string };
+  const title = data.text?.trim();
+  if (!title) {
+    throw new Error("LangGraph title endpoint returned an empty title");
+  }
+
+  return title;
+}
+
 async function createLangGraphBrainResponse({
   chatId,
   message,
   approval,
   langGraphThreadId,
+  titlePromise,
   userId,
 }: {
   chatId: string;
@@ -74,6 +114,7 @@ async function createLangGraphBrainResponse({
     comment?: string;
   };
   langGraphThreadId?: string;
+  titlePromise?: Promise<string> | null;
   userId: string;
 }) {
   const brainUrl = process.env.LANGGRAPH_BRAIN_URL ?? "http://localhost:8000";
@@ -83,7 +124,12 @@ async function createLangGraphBrainResponse({
   if (approval) {
     const dbMessages = await getMessagesByChatId({ id: chatId });
     const approvalMessage = [...dbMessages].reverse().find((dbMessage) =>
-      (dbMessage.parts as Array<{ type?: string; data?: { approvalId?: string } }>).some(
+      (
+        dbMessage.parts as Array<{
+          type?: string;
+          data?: { approvalId?: string };
+        }>
+      ).some(
         (part) =>
           part.type === "data-approval-required" &&
           part.data?.approvalId === approval.approval_id
@@ -132,16 +178,14 @@ async function createLangGraphBrainResponse({
   const decoder = new TextDecoder();
   const encoder = new TextEncoder();
   let pending = "";
-  let assistantMessageId = generateUUID();
+  const assistantMessageId = generateUUID();
   let assistantText = "";
   let assistantSources: MessageSourceData[] = [];
   let approvalMessageId = generateUUID();
-  let approvalPart:
-    | {
-        type: "data-approval-required";
-        data: unknown;
-      }
-    | null = null;
+  let approvalPart: {
+    type: "data-approval-required";
+    data: unknown;
+  } | null = null;
 
   const handlePart = (part: Record<string, any>) => {
     if (part.type === "start") {
@@ -157,14 +201,32 @@ async function createLangGraphBrainResponse({
           ...part.data,
           threadId: graphThreadId,
           status: "pending",
+          displayName: getApprovalDisplayName({
+            title: part.data?.title,
+            action: part.data?.action,
+          }),
+          provider:
+            getToolProvider(part.data?.action?.tool) ||
+            getToolProvider(part.data?.title?.match(/^Run\s+(.+)$/i)?.[1]),
         },
       };
       return approvalPart;
     }
     if (part.type === "data-sources") {
       assistantSources = Array.isArray(part.data?.sources)
-        ? part.data.sources
+        ? part.data.sources.map((source: MessageSourceData) => ({
+            ...source,
+            displayTitle: getToolDisplayName(source.toolName || source.title),
+            provider: source.provider || getToolProvider(source.toolName),
+          }))
         : [];
+      return {
+        ...part,
+        data: {
+          ...part.data,
+          sources: assistantSources,
+        },
+      };
     }
     return part;
   };
@@ -201,6 +263,23 @@ async function createLangGraphBrainResponse({
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       const reader = upstreamBody.getReader();
+      let streamClosed = false;
+      if (titlePromise) {
+        titlePromise
+          .then(async (title) => {
+            await updateChatTitleById({ chatId, title });
+            if (!streamClosed) {
+              controller.enqueue(
+                encoder.encode(
+                  `data: ${JSON.stringify({ type: "data-chat-title", data: title })}\n\n`
+                )
+              );
+            }
+          })
+          .catch(() => {
+            // Title updates are non-critical for the LangGraph proxy path.
+          });
+      }
       try {
         while (true) {
           const { done, value } = await reader.read();
@@ -265,6 +344,7 @@ async function createLangGraphBrainResponse({
           approvalPart = null;
         }
       } finally {
+        streamClosed = true;
         controller.close();
         reader.releaseLock();
       }
@@ -332,7 +412,15 @@ export async function POST(request: Request) {
         title: "New chat",
         visibility: selectedVisibilityType,
       });
-      titlePromise = generateTitleFromUserMessage({ message });
+      titlePromise =
+        selectedChatModel === "langgraph-brain"
+          ? generateLangGraphTitleFromUserMessage({
+              brainUrl:
+                process.env.LANGGRAPH_BRAIN_URL ?? "http://localhost:8000",
+              chatId: id,
+              message,
+            }).catch(() => generateTitleFromUserMessage({ message }))
+          : generateTitleFromUserMessage({ message });
     }
 
     const uiMessages = isToolApprovalFlow
@@ -364,18 +452,12 @@ export async function POST(request: Request) {
     }
 
     if (selectedChatModel === "langgraph-brain") {
-      if (titlePromise) {
-        void titlePromise.then((title) =>
-          updateChatTitleById({ chatId: id, title })
-        ).catch(() => {
-          // Title updates are non-critical for the LangGraph proxy path.
-        });
-      }
       return createLangGraphBrainResponse({
         chatId: id,
         message: message as ChatMessage | undefined,
         approval: requestBody.langGraphApproval,
         langGraphThreadId: requestBody.langGraphThreadId,
+        titlePromise,
         userId: session.user.id,
       });
     }

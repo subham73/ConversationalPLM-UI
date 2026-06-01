@@ -1,18 +1,16 @@
 import type { UseChatHelpers } from "@ai-sdk/react";
 import { ArrowDownIcon } from "lucide-react";
+import { useEffect, useState } from "react";
 import { useMessages } from "@/hooks/use-messages";
 import type { Vote } from "@/lib/db/schema";
+import { getApprovalDisplayName } from "@/lib/tool-display";
 import type { ChatMessage, CustomUIDataTypes } from "@/lib/types";
-import { Button } from "./ui/button";
 import { useDataStream } from "./data-stream-provider";
+import { Tool, ToolContent, ToolHeader, ToolInput } from "./elements/tool";
 import { Greeting } from "./greeting";
+import { SparklesIcon } from "./icons";
 import { PreviewMessage, ThinkingMessage } from "./message";
-import {
-  Tool,
-  ToolContent,
-  ToolHeader,
-  ToolInput,
-} from "./elements/tool";
+import { Button } from "./ui/button";
 
 type PendingLangGraphApproval = CustomUIDataTypes["approval-required"];
 
@@ -56,6 +54,38 @@ function PureMessages({
 
   useDataStream();
 
+  const awaitingAssistant = status === "submitted" || status === "streaming";
+  const lastMessage = messages.at(-1);
+  const lastAssistantHasVisibleOutput =
+    lastMessage?.role === "assistant" &&
+    lastMessage.parts?.some((part) => {
+      if (part.type === "text") {
+        return part.text.trim().length > 0;
+      }
+      if (part.type === "data-approval-required") {
+        return true;
+      }
+      if (part.type.startsWith("tool-")) {
+        return true;
+      }
+      return false;
+    });
+  const shouldShowThinking =
+    awaitingAssistant &&
+    !pendingLangGraphApproval &&
+    !lastAssistantHasVisibleOutput;
+  const [showThinking, setShowThinking] = useState(false);
+
+  useEffect(() => {
+    if (!shouldShowThinking) {
+      setShowThinking(false);
+      return;
+    }
+
+    const timeout = window.setTimeout(() => setShowThinking(true), 350);
+    return () => window.clearTimeout(timeout);
+  }, [shouldShowThinking]);
+
   return (
     <div className="relative flex-1">
       <div
@@ -88,12 +118,7 @@ function PureMessages({
             />
           ))}
 
-          {status === "submitted" &&
-            !messages.some((msg) =>
-              msg.parts?.some(
-                (part) => "state" in part && part.state === "approval-responded"
-              )
-            ) && <ThinkingMessage />}
+          {showThinking && <ThinkingMessage />}
 
           {pendingLangGraphApproval && (
             <LangGraphApprovalCard
@@ -140,13 +165,24 @@ function LangGraphApprovalCard({
   isReadonly: boolean;
   onRespond: (approved: boolean) => void;
 }) {
+  const displayName =
+    approval.displayName ||
+    getApprovalDisplayName({
+      title: approval.title,
+      action: approval.action,
+    });
+
   return (
     <div
       className="group/message fade-in w-full animate-in duration-200"
       data-role="assistant"
     >
       <div className="flex w-full items-start justify-start gap-2 md:gap-3">
-        <div className="w-full max-w-[min(100%,520px)]">
+        <div className="-mt-1 flex size-8 shrink-0 items-center justify-center rounded-full bg-background ring-1 ring-border">
+          <SparklesIcon size={14} />
+        </div>
+
+        <div className="min-w-0 w-full max-w-[520px]">
           <Tool className="w-full" defaultOpen={true}>
             <ToolHeader
               state="approval-requested"
@@ -154,7 +190,7 @@ function LangGraphApprovalCard({
             />
             <ToolContent>
               <div className="space-y-2 px-4 py-3">
-                <div className="font-medium text-sm">{approval.title}</div>
+                <div className="font-medium text-sm">{displayName}</div>
                 <div className="text-muted-foreground text-sm">
                   {approval.description}
                 </div>

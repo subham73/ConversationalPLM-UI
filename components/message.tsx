@@ -2,6 +2,7 @@
 import type { UseChatHelpers } from "@ai-sdk/react";
 import { useState } from "react";
 import type { Vote } from "@/lib/db/schema";
+import { getApprovalDisplayName } from "@/lib/tool-display";
 import type { ChatMessage, CustomUIDataTypes } from "@/lib/types";
 import { cn, sanitizeText } from "@/lib/utils";
 import { useDataStream } from "./data-stream-provider";
@@ -110,9 +111,11 @@ const PurePreviewMessage = ({
             const key = `message-${message.id}-part-${index}`;
 
             if (type === "data-approval-required") {
-              const approval = (part as {
-                data: CustomUIDataTypes["approval-required"];
-              }).data;
+              const approval = (
+                part as {
+                  data: CustomUIDataTypes["approval-required"];
+                }
+              ).data;
               const status = approval.status ?? "pending";
               const statusLabel =
                 status === "approved"
@@ -120,6 +123,12 @@ const PurePreviewMessage = ({
                   : status === "rejected"
                     ? "Rejected"
                     : "Approval requested";
+              const displayName =
+                approval.displayName ||
+                getApprovalDisplayName({
+                  title: approval.title,
+                  action: approval.action,
+                });
 
               return (
                 <div
@@ -127,7 +136,7 @@ const PurePreviewMessage = ({
                   key={key}
                 >
                   <span className="font-medium">{statusLabel}:</span>{" "}
-                  {approval.title}
+                  {displayName}
                 </div>
               );
             }
@@ -363,6 +372,69 @@ const PurePreviewMessage = ({
                     )}
                   </ToolContent>
                 </Tool>
+              );
+            }
+
+            if (type.startsWith("tool-")) {
+              const {
+                errorText,
+                input,
+                output,
+                state = "input-streaming",
+                toolCallId = key,
+              } = part as {
+                errorText?: string;
+                input?: unknown;
+                output?: unknown;
+                state?: Parameters<typeof ToolHeader>[0]["state"];
+                toolCallId?: string;
+              };
+
+              return (
+                <div className="w-[min(100%,520px)]" key={toolCallId}>
+                  <Tool
+                    className="w-full"
+                    defaultOpen={state !== "output-available"}
+                  >
+                    <ToolHeader state={state} type={type} />
+                    <ToolContent>
+                      {(state === "input-streaming" ||
+                        state === "input-available" ||
+                        state === "approval-requested") &&
+                        input !== undefined && <ToolInput input={input} />}
+                      {state === "input-streaming" && input === undefined && (
+                        <div className="flex items-center gap-1 px-4 py-3 text-muted-foreground text-sm">
+                          <span className="animate-pulse">Working</span>
+                          <span className="inline-flex">
+                            <span className="animate-bounce [animation-delay:0ms]">
+                              .
+                            </span>
+                            <span className="animate-bounce [animation-delay:150ms]">
+                              .
+                            </span>
+                            <span className="animate-bounce [animation-delay:300ms]">
+                              .
+                            </span>
+                          </span>
+                        </div>
+                      )}
+                      {(state === "output-available" ||
+                        state === "output-error" ||
+                        state === "output-denied") && (
+                        <ToolOutput
+                          errorText={errorText}
+                          output={
+                            output === undefined
+                              ? null
+                              : typeof output === "string"
+                                ? output
+                                : JSON.stringify(output, null, 2)
+                          }
+                        />
+                      )}
+                    </ToolContent>
+                  </Tool>
+                </div>
               );
             }
 

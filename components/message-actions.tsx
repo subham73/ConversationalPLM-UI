@@ -1,10 +1,11 @@
 import equal from "fast-deep-equal";
+import { ChevronDownIcon } from "lucide-react";
 import { memo, useMemo, useState } from "react";
 import { toast } from "sonner";
-import useSWR from "swr";
-import { useSWRConfig } from "swr";
+import useSWR, { useSWRConfig } from "swr";
 import { useCopyToClipboard } from "usehooks-ts";
 import type { Vote } from "@/lib/db/schema";
+import { getToolDisplayName, getToolProvider } from "@/lib/tool-display";
 import type { ChatMessage, MessageSourceData } from "@/lib/types";
 import { fetcher } from "@/lib/utils";
 import { Action, Actions } from "./elements/actions";
@@ -15,6 +16,11 @@ import {
   ThumbDownIcon,
   ThumbUpIcon,
 } from "./icons";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "./ui/collapsible";
 import {
   Dialog,
   DialogContent,
@@ -43,6 +49,7 @@ export function PureMessageActions({
   const { mutate } = useSWRConfig();
   const [_, copyToClipboard] = useCopyToClipboard();
   const [isSourcesOpen, setIsSourcesOpen] = useState(false);
+  const [openSourceIds, setOpenSourceIds] = useState<Set<string>>(new Set());
   const hasAssistantText =
     message.role === "assistant" &&
     message.parts.some((part) => part.type === "text" && part.text.trim());
@@ -94,6 +101,18 @@ export function PureMessageActions({
 
     await copyToClipboard(textFromParts);
     toast.success("Copied to clipboard!");
+  };
+
+  const toggleSource = (sourceId: string) => {
+    setOpenSourceIds((current) => {
+      const next = new Set(current);
+      if (next.has(sourceId)) {
+        next.delete(sourceId);
+      } else {
+        next.add(sourceId);
+      }
+      return next;
+    });
   };
 
   // User messages get edit (on hover) and copy actions
@@ -151,31 +170,62 @@ export function PureMessageActions({
                   </div>
                 ) : (
                   <div className="space-y-3">
-                    {sources.map((source, index) => (
-                      <section
-                        className="rounded-md border bg-muted/20"
-                        key={source.id || `${message.id}-source-${index}`}
-                      >
-                        <div className="flex items-center justify-between gap-3 border-b px-3 py-2">
-                          <div className="min-w-0">
-                            <div className="truncate font-medium text-sm">
-                              {source.title || source.toolName || "Source"}
-                            </div>
-                            {source.toolCallId && (
-                              <div className="truncate text-muted-foreground text-xs">
-                                {source.toolCallId}
+                    {sources.map((source, index) => {
+                      const sourceId =
+                        source.id || `${message.id}-source-${index}`;
+                      const displayTitle =
+                        source.displayTitle ||
+                        getToolDisplayName(source.toolName || source.title);
+                      const provider =
+                        source.provider || getToolProvider(source.toolName);
+                      const isOpen = openSourceIds.has(sourceId);
+
+                      return (
+                        <Collapsible
+                          className="rounded-md border bg-muted/20"
+                          key={sourceId}
+                          onOpenChange={() => toggleSource(sourceId)}
+                          open={isOpen}
+                        >
+                          <CollapsibleTrigger className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left">
+                            <div className="min-w-0 flex-1">
+                              <div className="truncate font-medium text-sm">
+                                {displayTitle || "Source"}
                               </div>
-                            )}
-                          </div>
-                          <span className="shrink-0 rounded border px-2 py-0.5 text-muted-foreground text-xs">
-                            {source.type}
-                          </span>
-                        </div>
-                        <pre className="max-h-72 overflow-auto p-3 text-xs leading-relaxed">
-                          {formatSourcePayload(source)}
-                        </pre>
-                      </section>
-                    ))}
+                              {(source.toolName || source.toolCallId) && (
+                                <div className="truncate text-muted-foreground text-xs">
+                                  {source.toolName}
+                                  {source.toolName && source.toolCallId
+                                    ? " - "
+                                    : ""}
+                                  {source.toolCallId}
+                                </div>
+                              )}
+                            </div>
+                            <div className="flex shrink-0 items-center gap-2">
+                              {provider && (
+                                <span className="rounded border bg-background px-2 py-0.5 font-medium text-xs">
+                                  {provider}
+                                </span>
+                              )}
+                              <span className="rounded border px-2 py-0.5 text-muted-foreground text-xs">
+                                {source.type}
+                              </span>
+                              <ChevronDownIcon
+                                className={`size-4 text-muted-foreground transition-transform ${
+                                  isOpen ? "rotate-180" : ""
+                                }`}
+                              />
+                            </div>
+                          </CollapsibleTrigger>
+                          <CollapsibleContent className="border-t">
+                            <pre className="max-h-72 overflow-auto p-3 text-xs leading-relaxed">
+                              {formatSourcePayload(source)}
+                            </pre>
+                          </CollapsibleContent>
+                        </Collapsible>
+                      );
+                    })}
                   </div>
                 )}
               </div>

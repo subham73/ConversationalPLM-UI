@@ -37,6 +37,8 @@ export type CustomUIDataTypes = {
     threadId?: string;
     status?: "pending" | "approved" | "rejected";
     title: string;
+    displayName?: string;
+    provider?: string;
     description: string;
     action: Record<string, unknown>;
   };
@@ -61,6 +63,8 @@ export type MessageSourceData = {
   id: string;
   type: string;
   title: string;
+  displayTitle?: string;
+  provider?: string;
   toolName?: string;
   toolCallId?: string;
   input?: unknown;

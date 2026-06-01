@@ -32,8 +32,7 @@ import { getChatHistoryPaginationKey } from "./sidebar-history";
 import { toast } from "./toast";
 import type { VisibilityType } from "./visibility-selector";
 
-export type PendingLangGraphApproval =
-  CustomUIDataTypes["approval-required"];
+export type PendingLangGraphApproval = CustomUIDataTypes["approval-required"];
 
 function getPendingApprovalFromMessages(messages: ChatMessage[]) {
   const lastMessage = messages.at(-1);
@@ -45,7 +44,10 @@ function getPendingApprovalFromMessages(messages: ChatMessage[]) {
     (part) => part.type === "data-approval-required"
   ) as { data?: PendingLangGraphApproval } | undefined;
 
-  return approvalPart?.data ?? null;
+  const approval = approvalPart?.data;
+  return approval?.status && approval.status !== "pending"
+    ? null
+    : (approval ?? null);
 }
 
 export function Chat({
@@ -177,7 +179,11 @@ export function Chat({
     }),
     onData: (dataPart) => {
       if (dataPart.type === "data-approval-required") {
-        setPendingApproval(dataPart.data);
+        setPendingApproval(
+          dataPart.data.status && dataPart.data.status !== "pending"
+            ? null
+            : dataPart.data
+        );
       }
       setDataStream((ds) => (ds ? [...ds, dataPart] : []));
     },

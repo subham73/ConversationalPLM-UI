@@ -24,6 +24,20 @@ import { MessageReasoning } from "./message-reasoning";
 import { PreviewAttachment } from "./preview-attachment";
 import { Weather } from "./weather";
 
+function isLangGraphApprovalResponse(message: ChatMessage) {
+  if (message.role !== "user") {
+    return false;
+  }
+
+  const text = message.parts
+    ?.filter((part) => part.type === "text")
+    .map((part) => part.text)
+    .join("\n")
+    .trim();
+
+  return /^(Approved|Rejected):\s+Run\s+/i.test(text ?? "");
+}
+
 const PurePreviewMessage = ({
   addToolApprovalResponse,
   chatId,
@@ -47,11 +61,15 @@ const PurePreviewMessage = ({
 }) => {
   const [mode, setMode] = useState<"view" | "edit">("view");
 
+  useDataStream();
+
+  if (isLangGraphApprovalResponse(message)) {
+    return null;
+  }
+
   const attachmentsFromMessage = message.parts.filter(
     (part) => part.type === "file"
   );
-
-  useDataStream();
 
   return (
     <div
@@ -132,7 +150,14 @@ const PurePreviewMessage = ({
 
               return (
                 <div
-                  className="w-fit rounded-md border bg-muted/30 px-3 py-2 text-sm"
+                  className={cn(
+                    "w-fit rounded-md border px-3 py-2 text-sm",
+                    status === "approved" &&
+                      "border-emerald-200 bg-emerald-50 text-emerald-900 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-100",
+                    status === "rejected" &&
+                      "border-red-200 bg-red-50 text-red-900 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-100",
+                    status === "pending" && "bg-muted/30"
+                  )}
                   key={key}
                 >
                   <span className="font-medium">{statusLabel}:</span>{" "}
@@ -389,6 +414,10 @@ const PurePreviewMessage = ({
                 state?: Parameters<typeof ToolHeader>[0]["state"];
                 toolCallId?: string;
               };
+
+              if (state === "output-available" || state === "output-denied") {
+                return null;
+              }
 
               return (
                 <div className="w-[min(100%,520px)]" key={toolCallId}>

@@ -1,5 +1,5 @@
 // Curated list of top models from Vercel AI Gateway
-export const DEFAULT_CHAT_MODEL = "google/gemini-2.5-flash-lite";
+export const DEFAULT_CHAT_MODEL = "change-brain";
 
 export type ChatModel = {
   id: string;
@@ -9,31 +9,50 @@ export type ChatModel = {
 };
 
 export const chatModels: ChatModel[] = [
+  //TTL
   {
     id: "langgraph-brain",
-    name: "LangGraph Brain",
-    provider: "langgraph",
+    name: "PLM Brain",
+    provider: "Tata Technologies",
+    description: "FastAPI agent with sequential interrupt approvals",
+  },
+  {
+    id: "product-brain",
+    name: "Product Brain",
+    provider: "Tata Technologies",
+    description: "FastAPI agent with sequential interrupt approvals",
+  },
+  {
+    id: "change-brain",
+    name: "Change Management Brain",
+    provider: "Tata Technologies",
+    description: "FastAPI agent with sequential interrupt approvals",
+  },
+  {
+    id: "mql-brain",
+    name: "MQL Brain",
+    provider: "Tata Technologies",
     description: "FastAPI agent with sequential interrupt approvals",
   },
   // Anthropic
-  {
-    id: "anthropic/claude-haiku-4.5",
-    name: "Claude Haiku 4.5",
-    provider: "anthropic",
-    description: "Fast and affordable, great for everyday tasks",
-  },
-  {
-    id: "anthropic/claude-sonnet-4.5",
-    name: "Claude Sonnet 4.5",
-    provider: "anthropic",
-    description: "Best balance of speed, intelligence, and cost",
-  },
-  {
-    id: "anthropic/claude-opus-4.5",
-    name: "Claude Opus 4.5",
-    provider: "anthropic",
-    description: "Most capable Anthropic model",
-  },
+  // {
+  //   id: "anthropic/claude-haiku-4.5",
+  //   name: "Claude Haiku 4.5",
+  //   provider: "anthropic",
+  //   description: "Fast and affordable, great for everyday tasks",
+  // },
+  // {
+  //   id: "anthropic/claude-sonnet-4.5",
+  //   name: "Claude Sonnet 4.5",
+  //   provider: "anthropic",
+  //   description: "Best balance of speed, intelligence, and cost",
+  // },
+  // {
+  //   id: "anthropic/claude-opus-4.5",
+  //   name: "Claude Opus 4.5",
+  //   provider: "anthropic",
+  //   description: "Most capable Anthropic model",
+  // },
   // OpenAI
   {
     id: "openai/gpt-4.1-mini",

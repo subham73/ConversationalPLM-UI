@@ -118,8 +118,7 @@ async function createLangGraphBrainResponse({
   userId: string;
 }) {
   const brainUrl = process.env.LANGGRAPH_BRAIN_URL ?? "http://localhost:8000";
-  const graphThreadId =
-    langGraphThreadId ?? `${chatId}:${message?.id ?? generateUUID()}`;
+  const graphThreadId = langGraphThreadId ?? chatId;
 
   if (approval) {
     const dbMessages = await getMessagesByChatId({ id: chatId });

@@ -54,11 +54,9 @@ function PureMessages({
 
   useDataStream();
 
-  const awaitingAssistant = status === "submitted" || status === "streaming";
-  const lastMessage = messages.at(-1);
-  const lastAssistantHasVisibleOutput =
-    lastMessage?.role === "assistant" &&
-    lastMessage.parts?.some((part) => {
+  const hasVisibleAssistantOutput = (message: ChatMessage | undefined) =>
+    message?.role === "assistant" &&
+    message.parts?.some((part) => {
       if (part.type === "text") {
         return part.text.trim().length > 0;
       }
@@ -70,10 +68,20 @@ function PureMessages({
       }
       return false;
     });
+
+  const awaitingAssistant = status === "submitted" || status === "streaming";
+  const latestUserMessageIndex = messages.findLastIndex(
+    (message) => message.role === "user"
+  );
+  const hasAssistantOutputForLatestTurn =
+    latestUserMessageIndex >= 0 &&
+    messages
+      .slice(latestUserMessageIndex + 1)
+      .some((message) => hasVisibleAssistantOutput(message));
   const shouldShowThinking =
     awaitingAssistant &&
     !pendingLangGraphApproval &&
-    !lastAssistantHasVisibleOutput;
+    !hasAssistantOutputForLatestTurn;
   const [showThinking, setShowThinking] = useState(false);
 
   useEffect(() => {
